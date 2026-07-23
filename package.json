@@ -1,11 +1,16 @@
 {
-  "name": "my-app",
+  "name": "ms32-server",
   "version": "1.0.0",
+  "description": "MS32 Server",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
+    "cors": "^2.8.5",
     "express": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
