@@ -1,14 +1,15 @@
 {
-  "name": "ms32-server",
+  "name": "screen-share-server",
   "version": "1.0.0",
-  "description": "MS32 Server",
+  "description": "WebSocket Screen Share Server",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "ws": "^8.18.3"
   },
   "engines": {
     "node": ">=20"
