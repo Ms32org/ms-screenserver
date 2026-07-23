@@ -1,10 +1,14 @@
-const express = require('express');
-const http = require('http');
-const cors = require('cors');
-const WebSocket = require('ws');
+const express = require("express");
+const http = require("http");
+const cors = require("cors");
+const WebSocket = require("ws");
 
 const app = express();
-app.use(cors());
+
+app.use(cors({
+    origin: "*",
+    methods: ["GET", "POST"]
+}));
 
 const server = http.createServer(app);
 
@@ -12,88 +16,90 @@ const wss = new WebSocket.Server({
     server,
     clientTracking: true,
     perMessageDeflate: false,
+    maxPayload: 100 * 1024 * 1024
 });
 
 let sender = null;
-let viewers = new Set();
+const viewers = new Set();
 
-app.get('/', (req, res) => {
-    res.send('screen share server v2');
+app.get("/", (_, res) => {
+    res.send("Screen Share Server v3");
 });
 
-wss.on('connection', (ws) => {
-    console.log('[CONNECT] New WebSocket client');
+wss.on("connection", (ws) => {
 
+    ws.binaryType = "arraybuffer";
     ws.role = null;
 
-    ws.on('message', (message, isBinary) => {
-        try {
-            // ===== ROLE IDENTIFICATION =====
-            if (!ws.role) {
-                const msg = message.toString();
+    ws.on("message", (message, isBinary) => {
 
-                if (msg === "sender") {
-                    sender = ws;
-                    ws.role = "sender";
-                    console.log("[ROLE] Sender connected");
-                } 
-                else if (msg === "viewer") {
-                    ws.role = "viewer";
-                    viewers.add(ws);
-                    console.log("[ROLE] Viewer connected");
-                }
+        if (!ws.role) {
 
-                return;
+            const role = message.toString();
+
+            if (role === "sender") {
+                sender = ws;
+                ws.role = "sender";
+                console.log("Sender Connected");
             }
 
-            // ===== SENDER LOGIC =====
-            if (ws.role === "sender") {
-                if (isBinary) {
-                    // Forward screen frames to all viewers
-                    viewers.forEach((client) => {
-                        if (client.readyState === WebSocket.OPEN) {
-                            client.send(message, { binary: true });
-                        }
-                    });
-                } else {
-                    console.log("[WARN] Sender sent non-binary");
-                }
+            if (role === "viewer") {
+                ws.role = "viewer";
+                viewers.add(ws);
+                console.log("Viewer Connected");
             }
 
-            // ===== VIEWER LOGIC =====
-            else if (ws.role === "viewer") {
-                // Forward controls to sender
-                if (sender && sender.readyState === WebSocket.OPEN) {
-                    sender.send(message.toString());
-                }
-            }
-
-        } catch (err) {
-            console.error("[ERROR]", err);
+            return;
         }
-    });
-
-    ws.on('close', () => {
-        console.log('[DISCONNECT] Client');
 
         if (ws.role === "sender") {
-            sender = null;
-            console.log("[INFO] Sender disconnected");
+
+            if (!isBinary) return;
+
+            for (const client of viewers) {
+
+                if (client.readyState !== WebSocket.OPEN)
+                    continue;
+
+                // Skip clients that are already behind.
+                if (client.bufferedAmount > 0)
+                    continue;
+
+                client.send(message, {
+                    binary: true,
+                    compress: false
+                });
+            }
+
+            return;
         }
 
         if (ws.role === "viewer") {
-            viewers.delete(ws);
-            console.log("[INFO] Viewer removed");
+
+            if (
+                sender &&
+                sender.readyState === WebSocket.OPEN &&
+                sender.bufferedAmount < 65536
+            ) {
+                sender.send(message);
+            }
         }
+
     });
 
-    ws.on('error', (err) => {
-        console.error('[WS ERROR]', err);
+    ws.on("close", () => {
+
+        if (ws.role === "sender")
+            sender = null;
+
+        viewers.delete(ws);
     });
+
+    ws.on("error", () => {});
 });
 
 const PORT = process.env.PORT || 8080;
 
 server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log("Running on", PORT);
 });
